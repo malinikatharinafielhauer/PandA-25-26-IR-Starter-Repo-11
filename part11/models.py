@@ -1,6 +1,6 @@
 # -------------------- Part 12 ToDo 0: Normalization + Stemming --------------------
 
- import re
+import re
 _PUNCT_TRANSLATION = str.maketrans("", "", "',.")
 
 class PorterStemmer:
@@ -9,8 +9,7 @@ class PorterStemmer:
             return word
 
         w = word
-
-        # --- Step 1a: plurals ---
+#the logic replaced because there were many elif else loops going on. seemed unecological.
         for suffix, replacement in [
             ("sses", "ss"),
             ("ies", "i"),
@@ -21,7 +20,7 @@ class PorterStemmer:
                 w = w[:-len(suffix)] + replacement
                 break
 
-        # --- Step 1b: past participles ---
+        # more suffixes
         for suffix in ("eed", "ed", "ing"):
             if w.endswith(suffix):
                 base = w[:-len(suffix)]
@@ -29,7 +28,7 @@ class PorterStemmer:
                     w = base if suffix != "eed" else w[:-1]
                 break
 
-        # --- Step 1c: y → i ---
+        #even more ending
         if w.endswith("y") and re.search(r"[aeiouy]", w[:-1]):
             w = w[:-1] + "i"
 
