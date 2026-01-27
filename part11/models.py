@@ -1,7 +1,7 @@
 # -------------------- Part 12 ToDo 0: Normalization + Stemming --------------------
 
 import re
-_PUNCT_TRANSLATION = str.maketrans("", "", "',.")
+_PUNCT_TRANSLATION = str.maketrans("", "", "',.") #
 
 class PorterStemmer:
     def stem(self, word: str) -> str:
@@ -28,7 +28,7 @@ class PorterStemmer:
                     w = base if suffix != "eed" else w[:-1]
                 break
 
-        #even more ending
+        #even more endings
         if w.endswith("y") and re.search(r"[aeiouy]", w[:-1]):
             w = w[:-1] + "i"
 
@@ -48,4 +48,6 @@ def process_token(token: str) -> str:
         return ""
     return _stemmer.stem(norm)
 
-###just ornamental for the upload
+###just ornamental for the upload4
+#preprocessor. instanciate. a class for the normalization
+#search result is not there, search result.

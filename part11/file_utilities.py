@@ -1,17 +1,19 @@
-from __future__ import annotations
 from typing import List, Dict, Any
 import json
 import os
-
 import urllib.request
 import urllib.error
 
+from .constants import  POETRYDB_URL, CACHE_FILENAME
 from .models import Sonnet
 
-POETRYDB_URL = "https://poetrydb.org/author,title/Shakespeare;Sonnet"
+# ---------- Paths & data loading ----------
+# ToDo 0: Move to file_utilities.py --> done
+def module_relative_path(name: str) -> str:
+    """Return absolute path for a file next to this module."""
+    return os.path.join(os.path.dirname(__file__), name)
 
-CACHE_FILENAME = "sonnets.json"
-
+# moved from models.py
 class Configuration:
     """
         A small configuration container for user preferences in the IR system.
@@ -23,26 +25,9 @@ class Configuration:
         # Default settings used at program startup.
         self.highlight = True
         self.search_mode = "AND"
-        self.hl_mode = "DEFAULT"
+        self.highlight_mode: str = "DEFAULT"
 
-    def __setitem__(self, key, value):
-        if key == "highlight":
-            self.highlight = "ON" == value
-        elif key == "search_mode":
-            self.search_mode = value
-        elif key == "hl_mode":
-            self.hl_mode = value
-
-    def __getitem__(self, key):
-        if key == "highlight":
-            return self.highlight == "ON"
-        elif key == "search_mode":
-            return self.search_mode
-        elif key == "hl_mode":
-            return self.hl_mode
-        return None
-
-    def copy(self):
+    def copy(self): #will create new "Configuration"
         """
             Return a *shallow copy* of this configuration object.
             Useful when you want to pass config around without mutating the original.
@@ -50,7 +35,9 @@ class Configuration:
         copy = Configuration()
         copy.highlight = self.highlight
         copy.search_mode = self.search_mode
+        copy.highlight_mode = self.highlight_mode
         return copy
+
 
     def update(self, other: Dict[str, Any]):
         """
@@ -68,31 +55,55 @@ class Configuration:
         if "search_mode" in other and other["search_mode"] in ["AND", "OR"]:
             self.search_mode = other["search_mode"]
 
-        if "hl_mode" in other and other["hl_mode"] in ["DEFAULT", "GREEN"]:
-            self.hl_mode = other["hl_mode"]
+        if "highlight_mode" in other and other["highlight_mode"] in ("DEFAULT", "GREEN"):
+            self.highlight_mode = other["highlight_mode"]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "highlight": self.highlight,
             "search_mode": self.search_mode,
-            "hl_mode": self.hl_mode,
+            "highlight_mode": self.highlight_mode
         }
 
-    def save(self: Configuration) -> None:
+    #save fct was moved into the "class Configuration)
+    def save(self):
         config_file_path = module_relative_path("config.json")
-
         try:
             with open(config_file_path, "w") as config_file:
                 json.dump(self.to_dict(), config_file, indent=4)
         except OSError:
             print(f"Writing config.json failed.")
+# ----- class configuration ends here -------
+
+# ------------------------- Config handling ---------------------------------
+# ToDo 0: Move to file_utilities.py --> done
+DEFAULT_CONFIG = Configuration()
+
+# ToDo 0: Move to file_utilities.py --> done
+def load_config() -> Configuration:
+    config_file_path = module_relative_path("config.json")
+
+    cfg = DEFAULT_CONFIG.copy()
+    try:
+        with open(config_file_path) as config_file:
+            cfg.update(json.load(config_file))
+    except FileNotFoundError:
+        # File simply doesn't exist yet → quiet, just use defaults
+        print("No config.json found. Using default configuration.")
+        return cfg
+    except json.JSONDecodeError:
+        # File exists but is not valid JSON
+        print("config.json is invalid. Using default configuration.")
+        return cfg
+    except OSError:
+        # Any other OS / IO problem (permissions, disk issues, etc.)
+        print("Could not read config.json. Using default configuration.")
+        return cfg
+
+    return cfg
 
 
-
-def module_relative_path(name: str) -> str:
-    """Return absolute path for a file next to this module."""
-    return os.path.join(os.path.dirname(__file__), name)
-
+# ToDo 0: Move to file_utilities.py --> done
 def fetch_sonnets_from_api() -> List[Sonnet]:
     """
     Call the PoetryDB API (POETRYDB_URL), decode the JSON response and
@@ -122,6 +133,7 @@ def fetch_sonnets_from_api() -> List[Sonnet]:
 
     return sonnets
 
+# ToDo 0: Move to file_utilities.py --> done
 def load_sonnets() -> List[Sonnet]:
     """
     Load Shakespeare's sonnets with caching.
@@ -163,27 +175,13 @@ def load_sonnets() -> List[Sonnet]:
         print("Downloaded sonnets from PoetryDB.")
 
     return [Sonnet(data) for data in sonnets]
-# ------------------------- Config handling ---------------------------------
-DEFAULT_CONFIG = Configuration()
 
-def load_config() -> Configuration:
-    config_file_path = module_relative_path("config.json")
 
-    cfg = DEFAULT_CONFIG.copy()
-    try:
-        with open(config_file_path) as config_file:
-            cfg.update(json.load(config_file))
-    except FileNotFoundError:
-        # File simply doesn't exist yet → quiet, just use defaults
-        print("No config.json found. Using default configuration.")
-        return cfg
-    except json.JSONDecodeError:
-        # File exists but is not valid JSON
-        print("config.json is invalid. Using default configuration.")
-        return cfg
-    except OSError:
-        # Any other OS / IO problem (permissions, disk issues, etc.)
-        print("Could not read config.json. Using default configuration.")
-        return cfg
 
-    return cfg
+
+
+
+
+
+
+#placeholder for sumbission
