@@ -1,14 +1,11 @@
-"""Settings command handler for configuration management."""
-
-
 class _SingleSettingsCommand:
-    def __init__(self, command_name, allowed_values, usage_text, config_attribute):
+    def __init__(self, command_name: str, allowed_values: list[str], usage_text: str, config_attribute: str):
         self.command_name = command_name
-        self.allowed_values = allowed_values
+        self.allowed_values = [v.upper() for v in allowed_values]
         self.usage_text = usage_text
         self.config_attribute = config_attribute
 
-    def try_handle(self, raw, config) -> bool:
+    def try_handle(self, raw: str, config) -> bool:
         if not raw.startswith(self.command_name):
             return False
 
@@ -18,8 +15,7 @@ class _SingleSettingsCommand:
             return True
 
         value = parts[1].upper()
-        allowed_upper = [v.upper() for v in self.allowed_values]
-        if value not in allowed_upper:
+        if value not in self.allowed_values:
             print(self.usage_text)
             return True
 
@@ -41,38 +37,19 @@ class _SingleSettingsCommand:
 
 class SettingsCommand:
     """
-    Part 11 ToDo 0 style: one entry-point used by app.py
-    - SettingsCommand(config).execute(raw)
+    De-duplicated settings handler (Part 11 ToDo 0):
+    One object handles all settings commands.
     """
     def __init__(self, config):
         self.config = config
         self.commands = [
-            _SingleSettingsCommand(
-                ":highlight",
-                ["ON", "OFF"],
-                "Usage: :highlight ON|OFF",
-                "highlight",
-            ),
-            _SingleSettingsCommand(
-                ":search-mode",
-                ["AND", "OR"],
-                "Usage: :search-mode AND|OR",
-                "search_mode",
-            ),
-            _SingleSettingsCommand(
-                ":hl-mode",
-                ["DEFAULT", "GREEN"],
-                "Usage: :hl-mode DEFAULT|GREEN",
-                "hl_mode",
-            ),
+            _SingleSettingsCommand(":highlight", ["ON", "OFF"], "Usage: :highlight ON|OFF", "highlight"),
+            _SingleSettingsCommand(":search-mode", ["AND", "OR"], "Usage: :search-mode AND|OR", "search_mode"),
+            _SingleSettingsCommand(":hl-mode", ["DEFAULT", "GREEN"], "Usage: :hl-mode DEFAULT|GREEN", "hl_mode"),
         ]
 
-    def execute(self, raw: str):
-        handled_any = False
+    def execute(self, raw: str) -> None:
         for cmd in self.commands:
             if cmd.try_handle(raw, self.config):
-                handled_any = True
-                break
-
-        if not handled_any:
-            print("Unknown command. Type :help for help.")
+                return
+        print("Unknown command. Type :help for commands.")
