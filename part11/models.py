@@ -4,28 +4,80 @@ from typing import List, Dict, Any, Tuple, Optional
 import re
 
 
+# =========================
+# Part 12 ToDo 0
+# Normalization + Stemming
+# =========================
+
+_PUNCT_TRANSLATION = str.maketrans("", "", "',.")
+
+
+class PorterStemmer:
+    """
+    Simplified Porter-style stemmer (sufficient for this homework).
+    """
+    def stem(self, word: str) -> str:
+        if len(word) <= 2:
+            return word
+
+        w = word
+
+        # Step 1a: plurals
+        for suffix, replacement in [
+            ("sses", "ss"),
+            ("ies", "i"),
+            ("ss", "ss"),
+            ("s", ""),
+        ]:
+            if w.endswith(suffix):
+                w = w[:-len(suffix)] + replacement
+                break
+
+        # Step 1b: past participles
+        for suffix in ("eed", "ed", "ing"):
+            if w.endswith(suffix):
+                base = w[:-len(suffix)]
+                if re.search(r"[aeiouy]", base):
+                    w = base if suffix != "eed" else w[:-1]
+                break
+
+        # Step 1c: y -> i
+        if w.endswith("y") and re.search(r"[aeiouy]", w[:-1]):
+            w = w[:-1] + "i"
+
+        return w
+
+
+_stemmer = PorterStemmer()
+
+
+def process_token(token: str) -> str:
+    """
+    Central token processing function (Part 12 requirement).
+    Used BOTH during indexing and querying.
+    """
+    norm = token.lower().translate(_PUNCT_TRANSLATION)
+    if not norm:
+        return ""
+    return _stemmer.stem(norm)
+
+
+# =========================
+# Data model + Search
+# =========================
+
 class Sonnet:
     def __init__(self, sonnet_data: Dict[str, Any]):
         self.title = sonnet_data["title"]
         self.lines = sonnet_data["lines"]
 
-        # ToDo 1 (Part 11): unique id from title like "Sonnet 11: ..."
+        # Part 11 ToDo 1
         self.id = int(self.title.split("Sonnet ")[1].split(":")[0])
-
-    @staticmethod
-    def find_spans(text: str, pattern: str):
-        spans = []
-        if not pattern:
-            return spans
-        for i in range(len(text) - len(pattern) + 1):
-            if text[i:i + len(pattern)] == pattern:
-                spans.append((i, i + len(pattern)))
-        return spans
 
 
 class LineMatch:
     def __init__(self, line_no: int, text: str, spans: List[Tuple[int, int]]):
-        self.line_no = line_no  # 1-based for printing
+        self.line_no = line_no
         self.text = text
         self.spans = spans
 
@@ -35,88 +87,69 @@ class LineMatch:
 
 class Posting:
     """
-    line_no:
-      - None => token is in title
-      - 0..n-1 => token is in sonnet.lines
-    position:
-      - character start offset within the title/line string
+    Stores enough info to highlight ORIGINAL tokens.
     """
-    def __init__(self, line_no: Optional[int], position: int):
+    def __init__(self, line_no: Optional[int], position: int, length: int):
         self.line_no = line_no
         self.position = position
-
-    def __repr__(self) -> str:
-        return f"{self.line_no}:{self.position}"
+        self.length = length
 
 
 class Index:
     def __init__(self, sonnets: list[Sonnet]):
-        self.sonnets = {sonnet.id: sonnet for sonnet in sonnets}
+        self.sonnets = {s.id: s for s in sonnets}
         self.dictionary: Dict[str, Dict[int, List[Posting]]] = {}
 
+        # Part 12 ToDo 1: index normalized + stemmed tokens
         for sonnet in sonnets:
             doc_id = sonnet.id
 
-            # ToDo 2: index title tokens with line_no=None
-            for token, position in self.tokenize(sonnet.title):
-                self._add_token(doc_id, token, None, position)
+            # title
+            for surface, pos in self.tokenize(sonnet.title):
+                key = process_token(surface)
+                if key:
+                    self._add_token(doc_id, key, None, pos, len(surface))
 
-            # ToDo 2: index line tokens with line_no=0..n-1
-            for line_no, line_text in enumerate(sonnet.lines):
-                for token, position in self.tokenize(line_text):
-                    self._add_token(doc_id, token, line_no, position)
+            # lines
+            for line_no, line in enumerate(sonnet.lines):
+                for surface, pos in self.tokenize(line):
+                    key = process_token(surface)
+                    if key:
+                        self._add_token(doc_id, key, line_no, pos, len(surface))
 
     @staticmethod
     def tokenize(text: str):
         return [(m.group(), m.start()) for m in re.finditer(r"\S+", text)]
 
-    def _add_token(self, doc_id: int, token: str, line_no: int | None, position: int):
-        if token not in self.dictionary:
-            self.dictionary[token] = {}
+    def _add_token(self, doc_id: int, token: str, line_no: int | None, position: int, length: int):
+        self.dictionary.setdefault(token, {}).setdefault(doc_id, []).append(
+            Posting(line_no, position, length)
+        )
 
-        postings_map = self.dictionary[token]
-        if doc_id not in postings_map:
-            postings_map[doc_id] = []
-
-        postings_map[doc_id].append(Posting(line_no, position))
-
-    def search_for(self, token: str) -> dict[int, "SearchResult"]:
+    def search_for(self, raw_token: str) -> dict[int, "SearchResult"]:
         results: Dict[int, SearchResult] = {}
 
-        if token not in self.dictionary:
+        # Part 12 ToDo 2: normalize + stem query
+        token = process_token(raw_token)
+        if not token or token not in self.dictionary:
             return results
 
-        postings_map = self.dictionary[token]
-
-        for doc_id, postings in postings_map.items():
+        for doc_id, postings in self.dictionary[token].items():
             sonnet = self.sonnets[doc_id]
 
-            for posting in postings:
-                # ToDo 3: create SearchResult from posting
-                start = posting.position
-                end = posting.position + len(token)
+            for p in postings:
+                span = (p.position, p.position + p.length)
 
-                if posting.line_no is None:
-                    result = SearchResult(
-                        title=sonnet.title,
-                        title_spans=[(start, end)],
-                        line_matches=[],
-                        matches=1,
-                    )
+                if p.line_no is None:
+                    result = SearchResult(sonnet.title, [span], [], 1)
                 else:
-                    line_text = sonnet.lines[posting.line_no]
-                    lm = LineMatch(posting.line_no + 1, line_text, [(start, end)])
-                    result = SearchResult(
-                        title=sonnet.title,
-                        title_spans=[],
-                        line_matches=[lm],
-                        matches=1,
-                    )
+                    line_text = sonnet.lines[p.line_no]
+                    lm = LineMatch(p.line_no + 1, line_text, [span])
+                    result = SearchResult(sonnet.title, [], [lm], 1)
 
-                if doc_id not in results:
-                    results[doc_id] = result
-                else:
-                    results[doc_id] = results[doc_id].combine_with(result)
+                results[doc_id] = (
+                    result if doc_id not in results else results[doc_id].combine_with(result)
+                )
 
         return results
 
@@ -127,32 +160,27 @@ class Searcher:
 
     def search(self, query: str, search_mode: str) -> List["SearchResult"]:
         words = query.split()
-        combined_results: Dict[int, SearchResult] = {}
+        combined: Dict[int, SearchResult] = {}
 
         for word in words:
             results = self.index.search_for(word)
 
-            if not combined_results:
-                combined_results = dict(results)
+            if not combined:
+                combined = dict(results)
                 continue
 
-            # ToDo 4: AND / OR combination
             if search_mode == "OR":
-                # union
                 for doc_id, res in results.items():
-                    if doc_id in combined_results:
-                        combined_results[doc_id] = combined_results[doc_id].combine_with(res)
-                    else:
-                        combined_results[doc_id] = res
-            else:
-                # AND: intersection
-                new_combined = {}
-                for doc_id in combined_results.keys() & results.keys():
-                    new_combined[doc_id] = combined_results[doc_id].combine_with(results[doc_id])
-                combined_results = new_combined
+                    combined[doc_id] = (
+                        res if doc_id not in combined else combined[doc_id].combine_with(res)
+                    )
+            else:  # AND
+                combined = {
+                    doc_id: combined[doc_id].combine_with(results[doc_id])
+                    for doc_id in combined.keys() & results.keys()
+                }
 
-        out = list(combined_results.values())
-        return sorted(out, key=lambda sr: sr.title)
+        return sorted(combined.values(), key=lambda r: r.title)
 
 
 class SearchResult:
@@ -162,7 +190,7 @@ class SearchResult:
         title_spans: List[Tuple[int, int]],
         line_matches: List[LineMatch],
         matches: int,
-    ) -> None:
+    ):
         self.title = title
         self.title_spans = title_spans
         self.line_matches = line_matches
@@ -192,38 +220,30 @@ class SearchResult:
                 cs, ce = s, e
         merged.append((cs, ce))
 
-        ansi_sequence = "\033[43m\033[30m" if highlight_mode == "DEFAULT" else "\033[1;92m"
+        ansi = "\033[43m\033[30m" if highlight_mode == "DEFAULT" else "\033[1;92m"
 
-        out = []
-        i = 0
+        out, i = [], 0
         for s, e in merged:
-            out.append(text[i:s])
-            out.append(ansi_sequence)
-            out.append(text[s:e])
-            out.append("\033[0m")
+            out += [text[i:s], ansi, text[s:e], "\033[0m"]
             i = e
         out.append(text[i:])
         return "".join(out)
 
     def print(self, idx, highlight_mode: str | None, total_docs):
-        title_line = self.ansi_highlight(self.title, self.title_spans, highlight_mode) if highlight_mode else self.title
-        print(f"\n[{idx}/{total_docs}] {title_line}")
-
+        title = self.ansi_highlight(self.title, self.title_spans, highlight_mode) if highlight_mode else self.title
+        print(f"\n[{idx}/{total_docs}] {title}")
         for lm in self.line_matches:
-            line_out = self.ansi_highlight(lm.text, lm.spans, highlight_mode) if highlight_mode else lm.text
-            print(f"  [{lm.line_no:2}] {line_out}")
+            line = self.ansi_highlight(lm.text, lm.spans, highlight_mode) if highlight_mode else lm.text
+            print(f"  [{lm.line_no:2}] {line}")
 
     def combine_with(self, other: "SearchResult") -> "SearchResult":
         combined = self.copy()
-        combined.matches = self.matches + other.matches
-        combined.title_spans = sorted(self.title_spans + other.title_spans)
+        combined.matches += other.matches
+        combined.title_spans += other.title_spans
 
-        lines_by_no = {lm.line_no: lm.copy() for lm in self.line_matches}
+        by_no = {lm.line_no: lm.copy() for lm in combined.line_matches}
         for lm in other.line_matches:
-            if lm.line_no in lines_by_no:
-                lines_by_no[lm.line_no].spans.extend(lm.spans)
-            else:
-                lines_by_no[lm.line_no] = lm.copy()
+            by_no.setdefault(lm.line_no, lm.copy()).spans += lm.spans
 
-        combined.line_matches = sorted(lines_by_no.values(), key=lambda x: x.line_no)
+        combined.line_matches = sorted(by_no.values(), key=lambda x: x.line_no)
         return combined
